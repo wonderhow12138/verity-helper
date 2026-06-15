@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verity 外场拼图</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #111; color: #eee;
+    min-height: 100vh; padding: 20px;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; }
+
+  h1 { text-align: center; font-size: 1.3rem; margin-bottom: 24px; font-weight: 600; }
+
+  .row { display: flex; gap: 10px; margin-bottom: 12px; }
+  .col { flex: 1; }
+  .col label { display: block; font-size: 0.8rem; color: #999; margin-bottom: 4px; }
+
+  select {
+    width: 100%; padding: 10px 8px;
+    background: #1a1a1a; color: #eee;
+    border: 1px solid #333; border-radius: 6px;
+    font-size: 0.9rem; outline: none;
+    -webkit-appearance: none; appearance: none;
+  }
+  select:focus { border-color: #58a6ff; }
+
+  button {
+    width: 100%; padding: 12px; margin: 16px 0 20px;
+    background: #58a6ff; color: #fff; border: none;
+    border-radius: 8px; font-size: 1rem; font-weight: 600;
+    cursor: pointer;
+  }
+  button:active { transform: scale(0.98); }
+
+  .err {
+    color: #f87171; font-size: 0.85rem; text-align: center;
+    margin-bottom: 12px; display: none;
+  }
+  .err.show { display: block; }
+
+  .out { display: none; }
+  .out.show { display: block; }
+
+  .out .line {
+    text-align: center; padding: 10px; margin-bottom: 8px;
+    background: #1a1a1a; border-radius: 8px;
+    font-size: 0.95rem; line-height: 1.7;
+  }
+  .out .line em {
+    font-style: normal; font-weight: 700;
+  }
+  .out .line .c { color: #f5c842; }
+  .out .line .t { color: #4caf50; }
+  .out .line .s { color: #e53935; }
+
+  .out .done {
+    text-align: center; color: #4caf50;
+    font-weight: 600; padding: 8px; font-size: 0.95rem;
+  }
+
+  .hint {
+    text-align: center; color: #666; font-size: 0.8rem;
+    margin-bottom: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Verity 外场拼图</h1>
+
+  <!-- 内场 -->
+  <div class="row">
+    <div class="col"><label>左</label><select id="i0"><option value="">-</option><option value="C">● 圆</option><option value="T">▲ 三角</option><option value="S">■ 方</option></select></div>
+    <div class="col"><label>中</label><select id="i1"><option value="">-</option><option value="C">● 圆</option><option value="T">▲ 三角</option><option value="S">■ 方</option></select></div>
+    <div class="col"><label>右</label><select id="i2"><option value="">-</option><option value="C">● 圆</option><option value="T">▲ 三角</option><option value="S">■ 方</option></select></div>
+  </div>
+
+  <!-- 外场 -->
+  <div class="row">
+    <div class="col"><label>左</label><select id="o0"><option value="">-</option><option value="CC">●● 球</option><option value="TT">▲▲ 锥</option><option value="SS">■■ 方</option><option value="CS">●■ 柱</option><option value="CT">●▲ 圆锥</option><option value="ST">▲■ 棱</option></select></div>
+    <div class="col"><label>中</label><select id="o1"><option value="">-</option><option value="CC">●● 球</option><option value="TT">▲▲ 锥</option><option value="SS">■■ 方</option><option value="CS">●■ 柱</option><option value="CT">●▲ 圆锥</option><option value="ST">▲■ 棱</option></select></div>
+    <div class="col"><label>右</label><select id="o2"><option value="">-</option><option value="CC">●● 球</option><option value="TT">▲▲ 锥</option><option value="SS">■■ 方</option><option value="CS">●■ 柱</option><option value="CT">●▲ 圆锥</option><option value="ST">▲■ 棱</option></select></div>
+  </div>
+
+  <button onclick="calc()">计算</button>
+
+  <div class="hint">上面选内场报的三个单图形，下面选外场三个雕像当前的立体图形</div>
+
+  <div class="err" id="err"></div>
+  <div class="out" id="out"></div>
+
+</div>
+
+<script>
+const S = { C:{sym:'●',cls:'c',name:'圆'}, T:{sym:'▲',cls:'t',name:'三角'}, S:{sym:'■',cls:'s',name:'方'} };
+const D3 = { CC:'球', TT:'锥', SS:'方', CS:'柱', CT:'圆锥', ST:'棱' };
+const ALL = ['C','T','S'];
+const POS = ['左','中','右'];
+
+function sym(c) { return `<span class="${S[c].cls}">${S[c].sym}</span>`; }
+function comp(s) { return s.split('').map(c=>sym(c)).join(''); }
+
+function key(st) { return st.join('|'); }
+
+function neighbors(st) {
+  const res = [];
+  for (let i=0;i<3;i++) for (let j=i+1;j<3;j++) {
+    const a = st[i].split(''), b = st[j].split('');
+    const seen = new Set();
+    for (let xi=0;xi<2;xi++) for (let xj=0;xj<2;xj++) {
+      const x=a[xi], y=b[xj];
+      if (x===y||seen.has(x+','+y)) continue;
+      seen.add(x+','+y);
+      const na=[...a], nb=[...b];
+      na.splice(xi,1,y); nb.splice(xj,1,x);
+      na.sort(); nb.sort();
+      const ns=[...st]; ns[i]=na.join(''); ns[j]=nb.join('');
+      res.push({st:ns, sw:{i,j,x,y}});
+    }
+  }
+  return res;
+}
+
+function bfs(init, tgt) {
+  if (init.every((v,i)=>v===tgt[i])) return [];
+  const q=[{st:init,path:[]}], vis=new Set([key(init)]);
+  while (q.length) {
+    const {st,path}=q.shift();
+    for (const {st:ns,sw} of neighbors(st)) {
+      const k=key(ns);
+      if (vis.has(k)) continue;
+      vis.add(k);
+      const np=[...path,sw];
+      if (ns.every((v,i)=>v===tgt[i])) return np;
+      q.push({st:ns,path:np});
+    }
+  }
+  return null;
+}
+
+function calc() {
+  const err=document.getElementById('err'), out=document.getElementById('out');
+  err.classList.remove('show'); out.classList.remove('show');
+
+  const inside=[];
+  for (let i=0;i<3;i++) {
+    const v=document.getElementById('i'+i).value;
+    if (!v) { err.textContent='请选完内场三个图形'; err.classList.add('show'); return; }
+    inside.push(v);
+  }
+  if (new Set(inside).size!==3) {
+    err.textContent='内场三个图形必须各不相同（● ▲ ■ 各一）';
+    err.classList.add('show'); return;
+  }
+
+  const init=[];
+  for (let i=0;i<3;i++) {
+    const v=document.getElementById('o'+i).value;
+    if (!v) { err.textContent='请选完外场三个立体图形'; err.classList.add('show'); return; }
+    init.push(v.split('').sort().join(''));
+  }
+
+  const total=init.join('').split('');
+  const cc=total.filter(c=>c==='C').length;
+  const tt=total.filter(c=>c==='T').length;
+  const ss=total.filter(c=>c==='S').length;
+  if (cc!==2||tt!==2||ss!==2) {
+    err.textContent='外场三个立体图形的组件总量必须正好 2●+2▲+2■（当前: '+cc+'●+'+tt+'▲+'+ss+'■）';
+    err.classList.add('show'); return;
+  }
+
+  const tgt=inside.map(s=>ALL.filter(x=>x!==s).sort().join(''));
+  const swaps=bfs(init,tgt);
+
+  if (swaps===null) {
+    err.textContent='计算出错，请检查输入'; err.classList.add('show'); return;
+  }
+
+  // 构建结果
+  let cur=[...init];
+  let html='';
+  if (swaps.length===0) {
+    html='<div class="done">✅ 外场已匹配，无需交换</div>';
+  } else {
+    html+=`<div style="text-align:center;color:#999;margin-bottom:10px;font-size:0.85rem">共 ${swaps.length} 次交换</div>`;
+    for (let si=0;si<swaps.length;si++) {
+      const sw=swaps[si];
+      const a=S[sw.x], b=S[sw.y];
+      const ni=[...cur];
+      const nia=[...ni[sw.i].split('')], nib=[...ni[sw.j].split('')];
+      const xi=nia.indexOf(sw.x), xj=nib.indexOf(sw.y);
+      nia.splice(xi,1,sw.y); nib.splice(xj,1,sw.x);
+      nia.sort(); nib.sort();
+      ni[sw.i]=nia.join(''); ni[sw.j]=nib.join('');
+
+      html+=`<div class="line">
+        <span style="color:#999">${si+1}.</span>
+        <strong>${POS[sw.i]}</strong>的 <span class="${a.cls}">${a.sym}${a.name}</span>
+        ⟷
+        <strong>${POS[sw.j]}</strong>的 <span class="${b.cls}">${b.sym}${b.name}</span>
+        <br><span style="font-size:0.8rem;color:#666">
+          ${POS.map((p,k)=>p+': '+comp(ni[k])+' '+D3[ni[k]]).join('  ·  ')}
+        </span>
+      </div>`;
+      cur=ni;
+    }
+    html+=`<div class="done">✅ 完成，通知内场</div>`;
+  }
+
+  out.innerHTML=html;
+  out.classList.add('show');
+  out.scrollIntoView({behavior:'smooth',block:'center'});
+}
+</script>
+</body>
+</html>
