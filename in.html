@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verity 内场送图</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #111; color: #eee; min-height: 100vh; padding: 24px; }
+  .wrap { max-width: 400px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 1.2rem; margin-bottom: 4px; }
+  .sub { text-align: center; font-size: 0.75rem; color: #888; margin-bottom: 18px; }
+
+  .card { background: #1a1a1a; border-radius: 10px; padding: 16px; margin-bottom: 12px; border: 1px solid #2a2a2a; }
+  .card label { display: block; font-size: 0.78rem; color: #999; margin: 8px 0 3px; }
+  .card label:first-child { margin-top: 0; }
+  select { width: 100%; padding: 9px 6px; background: #111; color: #eee; border: 1px solid #333; border-radius: 6px; font-size: 0.9rem; outline: none; -webkit-appearance: none; appearance: none; }
+  select:focus { border-color: #58a6ff; }
+  .wall-row { display: flex; gap: 8px; }
+  .wall-row select { flex: 1; }
+
+  button { width: 100%; padding: 13px; margin: 12px 0 16px; background: #58a6ff; color: #fff; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  button:active { transform: scale(0.98); }
+
+  .err { color: #f87171; font-size: 0.82rem; text-align: center; margin-bottom: 10px; display: none; }
+  .err.show { display: block; }
+  .out { display: none; }
+  .out.show { display: block; }
+
+  .res { background: #1a1a1a; border-radius: 10px; padding: 16px; border: 1px solid #2a2a2a; }
+  .res .title { font-size: 0.95rem; font-weight: 700; margin-bottom: 10px; }
+  .res .act { font-size: 0.9rem; margin: 6px 0; line-height: 1.7; }
+  .res .dest { font-weight: 600; color: #58a6ff; }
+  .c { color: #f5c842; }
+  .t { color: #4caf50; }
+  .s { color: #e53935; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Verity 内场送图</h1>
+  <div class="sub">只填你自己的，不用管别人墙上是什么</div>
+
+  <div class="card">
+    <label>你的雕像图形</label>
+    <select id="myStatue">
+      <option value="">-- 选择 --</option>
+      <option value="C">● 圆</option>
+      <option value="T">▲ 三角</option>
+      <option value="S">■ 方</option>
+    </select>
+    <label>墙上图形 1</label>
+    <div class="wall-row">
+      <select id="w1"><option value="">-</option><option value="C">● 圆</option><option value="T">▲ 三角</option><option value="S">■ 方</option></select>
+    </div>
+    <label>墙上图形 2</label>
+    <div class="wall-row">
+      <select id="w2"><option value="">-</option><option value="C">● 圆</option><option value="T">▲ 三角</option><option value="S">■ 方</option></select>
+    </div>
+  </div>
+
+  <button onclick="calc()">计算</button>
+  <div class="err" id="err"></div>
+  <div class="out" id="out"></div>
+</div>
+
+<script>
+const SHP = ['C','T','S'];
+const SYM = { C:'●', T:'▲', S:'■' };
+const NM  = { C:'圆', T:'三角', S:'方' };
+const CLS = { C:'c', T:'t', S:'s' };
+
+function sym(c){ return `<span class="${CLS[c]}">${SYM[c]}${NM[c]}</span>`; }
+
+// 雕像变化 → 墙上默认填自己的雕像
+document.getElementById('myStatue').addEventListener('change', ()=>{
+  const v = document.getElementById('myStatue').value;
+  if (v) {
+    document.getElementById('w1').value = v;
+    document.getElementById('w2').value = v;
+  }
+});
+
+function calc() {
+  const err = document.getElementById('err');
+  const out = document.getElementById('out');
+  err.classList.remove('show');
+  out.classList.remove('show');
+
+  const me = document.getElementById('myStatue').value;
+  const w1 = document.getElementById('w1').value;
+  const w2 = document.getElementById('w2').value;
+
+  if (!me) { err.textContent = '请选择你的雕像图形'; err.classList.add('show'); return; }
+  if (!w1 || !w2) { err.textContent = '请选完墙上两个图形'; err.classList.add('show'); return; }
+
+  // 另外两个玩家
+  const others = SHP.filter(s => s !== me);
+  const [o1, o2] = others; // o1=三角玩家, o2=方玩家 (对圆玩家而言)
+
+  const wall = [w1, w2];
+
+  // 每个图形的合法收件人：雕像 ≠ 该图形的玩家
+  function valid(shape) {
+    return others.filter(s => s !== shape);
+  }
+
+  const v1 = valid(w1);
+  const v2 = valid(w2);
+
+  // 检查是否有合法解
+  if (v1.length === 0 || v2.length === 0) {
+    err.textContent = '墙上图形 ' + SYM[w1] + ' 无法送：两个玩家雕像都是 ' + NM[w1] + '？\n请检查输入';
+    err.classList.add('show'); return;
+  }
+
+  // 分配收件人（两图形必须送不同人）
+  let to1, to2;
+  if (v1.length === 1 && v2.length === 1) {
+    // 各自只有一个合法收件人
+    if (v1[0] === v2[0]) {
+      err.textContent = '两个图形都只能送给 ' + NM[v1[0]] + ' 玩家，无法分配。\n当前状态不合法，请检查。';
+      err.classList.add('show'); return;
+    }
+    to1 = v1[0]; to2 = v2[0];
+  } else if (v1.length === 1) {
+    to1 = v1[0];
+    to2 = v2[0] === to1 ? v2[1] : v2[0];
+  } else if (v2.length === 1) {
+    to2 = v2[0];
+    to1 = v1[0] === to2 ? v1[1] : v1[0];
+  } else {
+    // 两个都能送任意人 → 默认一人送一个
+    to1 = o1; to2 = o2;
+  }
+
+  // 你的目标：最终手上两个图形 = 非雕像的那两个（必然不同）
+  const goal = SHP.filter(s => s !== me);
+
+  out.innerHTML = `<div class="res">
+    <div class="title">你是 ${sym(me)} 玩家</div>
+    <div style="font-size:0.82rem;color:#999;margin-bottom:8px;">
+      墙上当前：<span class="${CLS[w1]}">${SYM[w1]}</span> <span class="${CLS[w2]}">${SYM[w2]}</span>
+      &nbsp;→ 目标：<span class="${CLS[goal[0]]}">${SYM[goal[0]]}</span><span class="${CLS[goal[1]]}">${SYM[goal[1]]}</span>
+      （两个不同，合成出门钥匙）
+    </div>
+    <div class="act">→ 将 ${sym(w1)} 送给 <span class="dest">${NM[to1]} 玩家</span></div>
+    <div class="act">→ 将 ${sym(w2)} 送给 <span class="dest">${NM[to2]} 玩家</span></div>
+    <div style="font-size:0.78rem;color:#888;margin-top:10px;border-top:1px solid #2a2a2a;padding-top:8px;">
+      送出后你会从另外两人那里各收到一个图形，最终手里是不同两个且不含${SYM[me]}。
+    </div>
+  </div>`;
+  out.classList.add('show');
+}
+</script>
+</body>
+</html>
