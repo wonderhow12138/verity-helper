@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verity 内场交换图形</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #111; color: #eee;
+    min-height: 100vh; padding: 20px;
+  }
+  .wrap { max-width: 500px; margin: 0 auto; }
+
+  h1 { text-align: center; font-size: 1.3rem; margin-bottom: 20px; font-weight: 600; }
+
+  .section-label { font-size: 0.8rem; color: #999; margin: 14px 0 6px; }
+  .row { display: flex; gap: 10px; margin-bottom: 8px; }
+  .col { flex: 1; }
+  .col .pos { display: block; font-size: 0.75rem; color: #999; margin-bottom: 3px; }
+  select {
+    width: 100%; padding: 8px 6px;
+    background: #1a1a1a; color: #eee;
+    border: 1px solid #333; border-radius: 6px;
+    font-size: 0.85rem; outline: none;
+    -webkit-appearance: none; appearance: none; margin-bottom: 3px;
+  }
+  select:focus { border-color: #58a6ff; }
+
+  button {
+    width: 100%; padding: 12px; margin: 14px 0 18px;
+    background: #58a6ff; color: #fff; border: none;
+    border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer;
+  }
+  button:active { transform: scale(0.98); }
+
+  .err { color: #f87171; font-size: 0.85rem; text-align: center; margin-bottom: 12px; display: none; }
+  .err.show { display: block; }
+
+  .out { display: none; }
+  .out.show { display: block; }
+
+  .step {
+    padding: 12px 14px; margin-bottom: 8px;
+    background: #1a1a1a; border-radius: 8px;
+    font-size: 0.92rem; line-height: 1.7;
+  }
+  .step .c { color: #f5c842; }
+  .step .t { color: #4caf50; }
+  .step .s { color: #e53935; }
+
+  .summary {
+    text-align: center; font-size: 0.85rem; color: #999;
+    margin-bottom: 10px;
+  }
+  .done {
+    text-align: center; color: #4caf50; font-weight: 600;
+    padding: 10px; font-size: 0.95rem;
+  }
+  .hint {
+    text-align: center; color: #666; font-size: 0.75rem;
+    margin-bottom: 14px; line-height: 1.6;
+  }
+
+  .card {
+    background: #161616; border-radius: 10px; padding: 14px; margin-bottom: 10px;
+    border: 1px solid #222;
+  }
+
+  .state-line {
+    text-align: center; font-size: 0.8rem; color: #999;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Verity 内场交换图形</h1>
+  <div class="hint">
+    选每人雕像图形，墙上默认为两个自己的图形<br>如已操作过，手动改墙上当前组合
+  </div>
+
+  <!-- 雕像选择 -->
+  <div class="section-label">雕像图形（每人报自己的）</div>
+  <div class="row">
+    <div class="col"><span class="pos">左</span><select id="s0"><option value="">-</option><option value="C">● 圆</option><option value="T">▲ 三角</option><option value="S">■ 方</option></select></div>
+    <div class="col"><span class="pos">中</span><select id="s1"><option value="">-</option><option value="C">● 圆</option><option value="T">▲ 三角</option><option value="S">■ 方</option></select></div>
+    <div class="col"><span class="pos">右</span><select id="s2"><option value="">-</option><option value="C">● 圆</option><option value="T">▲ 三角</option><option value="S">■ 方</option></select></div>
+  </div>
+
+  <!-- 墙上当前图形 -->
+  <div class="section-label">墙上当前图形（每人两个合成一个立体）</div>
+  <div class="row">
+    <div class="col"><span class="pos">左</span><select id="w0"><option value="">-</option></select></div>
+    <div class="col"><span class="pos">中</span><select id="w1"><option value="">-</option></select></div>
+    <div class="col"><span class="pos">右</span><select id="w2"><option value="">-</option></select></div>
+  </div>
+
+  <button onclick="calc()">计算交换流程</button>
+
+  <div class="err" id="err"></div>
+  <div class="out" id="out"></div>
+
+</div>
+
+<script>
+const S = { C:{sym:'●',cls:'c',name:'圆'}, T:{sym:'▲',cls:'t',name:'三角'}, S:{sym:'■',cls:'s',name:'方'} };
+const D3 = { CC:'球', TT:'锥', SS:'方', CS:'柱', CT:'圆锥', ST:'棱' };
+const ALL = ['C','T','S'];
+const POS = ['左','中','右'];
+
+function sym(c) { return `<span class="${S[c].cls}">${S[c].sym}${S[c].name}</span>`; }
+function comp(s) { return s.split('').map(c=>`<span class="${S[c].cls}">${S[c].sym}</span>`).join(''); }
+function shapeName(k) { return comp(k) + ' ' + D3[k]; }
+
+// 雕像改动 → 墙上默认设为自己的两个图形
+function onStatue(i) {
+  const v = document.getElementById('s'+i).value;
+  const sel = document.getElementById('w'+i);
+  const prev = sel.value;
+  const opts = [
+    {v:'CC',t:'●● 球'},
+    {v:'TT',t:'▲▲ 锥'},
+    {v:'SS',t:'■■ 方'},
+    {v:'CS',t:'●■ 柱'},
+    {v:'CT',t:'●▲ 圆锥'},
+    {v:'ST',t:'▲■ 棱'},
+  ];
+  sel.innerHTML = '';
+  if (v) {
+    opts.forEach(o => { sel.innerHTML += `<option value="${o.v}">${o.t}</option>`; });
+    // 如果之前的值还在选项里就保留，否则默认设为自己的双份
+    if (opts.some(o => o.v === prev)) sel.value = prev;
+    else sel.value = v+v;
+  } else {
+    sel.innerHTML = '<option value="">-</option>';
+  }
+}
+
+// ---- BFS（与外场工具相同算法）----
+function key(st) { return st.join('|'); }
+
+function neighbors(st) {
+  const res = [];
+  for (let i=0;i<3;i++) for (let j=i+1;j<3;j++) {
+    const a=st[i].split(''), b=st[j].split('');
+    const seen=new Set();
+    for (let xi=0;xi<2;xi++) for (let xj=0;xj<2;xj++) {
+      const x=a[xi], y=b[xj];
+      if (x===y||seen.has(x+','+y)) continue;
+      seen.add(x+','+y);
+      const na=[...a], nb=[...b];
+      na.splice(xi,1,y); nb.splice(xj,1,x);
+      na.sort(); nb.sort();
+      const ns=[...st]; ns[i]=na.join(''); ns[j]=nb.join('');
+      res.push({st:ns, sw:{i,j,x,y}});
+    }
+  }
+  return res;
+}
+
+function bfs(init, tgt) {
+  if (init.every((v,i)=>v===tgt[i])) return [];
+  const q=[{st:init,path:[]}], vis=new Set([key(init)]);
+  while (q.length) {
+    const {st,path}=q.shift();
+    for (const {st:ns,sw} of neighbors(st)) {
+      const k=key(ns);
+      if (vis.has(k)) continue;
+      vis.add(k);
+      const np=[...path,sw];
+      if (ns.every((v,i)=>v===tgt[i])) return np;
+      q.push({st:ns,path:np});
+    }
+  }
+  return null;
+}
+
+function calc() {
+  const err=document.getElementById('err'), out=document.getElementById('out');
+  err.classList.remove('show'); out.classList.remove('show');
+
+  // 读取
+  const statues=[];
+  const walls=[];
+  for (let i=0;i<3;i++) {
+    const s=document.getElementById('s'+i).value;
+    if (!s) { err.textContent='请选完三个雕像图形'; err.classList.add('show'); return; }
+    statues.push(s);
+    const w=document.getElementById('w'+i).value;
+    if (!w) { err.textContent='请选完三个墙上图形'; err.classList.add('show'); return; }
+    walls.push(w.split('').sort().join(''));
+  }
+
+  if (new Set(statues).size!==3) {
+    err.textContent='三个雕像图形必须各不相同（● ▲ ■ 各一）';
+    err.classList.add('show'); return;
+  }
+
+  const total=walls.join('').split('');
+  const cc=total.filter(c=>c==='C').length;
+  const tt=total.filter(c=>c==='T').length;
+  const ss=total.filter(c=>c==='S').length;
+  if (cc!==2||tt!==2||ss!==2) {
+    err.textContent='墙上图形总量必须 2●+2▲+2■（当前: '+cc+'●+'+tt+'▲+'+ss+'■）';
+    err.classList.add('show'); return;
+  }
+
+  const target=statues.map(s=>ALL.filter(x=>x!==s).sort().join(''));
+  const swaps=bfs(walls,target);
+
+  if (swaps===null) {
+    err.textContent='计算出错，请检查输入'; err.classList.add('show'); return;
+  }
+
+  if (swaps.length===0) {
+    out.innerHTML='<div class="done">✅ 三人墙上已匹配，无需交换</div>';
+    out.classList.add('show');
+    return;
+  }
+
+  // 渲染交换步骤
+  let cur=[...walls];
+  let html=`<div class="summary">共 ${swaps.length} 次交换</div>`;
+
+  for (let si=0;si<swaps.length;si++) {
+    const sw=swaps[si];
+    const a=S[sw.x], b=S[sw.y];
+
+    // 计算交换后状态用于展示
+    const ni=[...cur];
+    const nia=[...ni[sw.i].split('')], nib=[...ni[sw.j].split('')];
+    const xi=nia.indexOf(sw.x), xj=nib.indexOf(sw.y);
+    nia.splice(xi,1,sw.y); nib.splice(xj,1,sw.x);
+    nia.sort(); nib.sort();
+    ni[sw.i]=nia.join(''); ni[sw.j]=nib.join('');
+
+    html+=`<div class="step">
+      <span style="color:#999">${si+1}.</span>
+      <strong>${POS[sw.i]}</strong>的 <span class="${a.cls}">${a.sym}${a.name}</span>
+      ⟷
+      <strong>${POS[sw.j]}</strong>的 <span class="${b.cls}">${b.sym}${b.name}</span>
+      <div class="state-line">
+        交换后：${POS.map((p,k)=>p+': '+shapeName(ni[k])).join('  ·  ')}
+      </div>
+    </div>`;
+    cur=ni;
+  }
+
+  html+=`<div class="done">✅ 每人墙上均不含自己的雕像图形，通知外场</div>`;
+  out.innerHTML=html;
+  out.classList.add('show');
+  out.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+// 初始化
+for (let i=0;i<3;i++) {
+  document.getElementById('s'+i).addEventListener('change', ()=>onStatue(i));
+  onStatue(i);
+}
+</script>
+</body>
+</html>
